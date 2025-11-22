@@ -1,110 +1,118 @@
--- Servicios
-local Players = game:GetService("Players")
-local RunService = game:GetService("RunService")
-local UserInputService = game:GetService("UserInputService")
+--========================================================--
+--   AUTO BUY GLOBAL - UN SOLO SCRIPT - PC & MÓVIL        --
+--========================================================--
 
-local LocalPlayer = Players.LocalPlayer
+-------------------------
+-- CONFIGURACIÓN
+-------------------------
+local AUTO_SPEED = 0.1   -- cada cuántos segundos intenta comprar
+local INTERACT_KEY = Enum.KeyCode.E  -- tecla de comprar
 
--- ====== Crear UI ======
-local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
-ScreenGui.ResetOnSpawn = false
+-------------------------
+-- REFERENCIAS
+-------------------------
+local RS = game:GetService("ReplicatedStorage")
+local UIS = game:GetService("UserInputService")
+local RUN = game:GetService("RunService")
 
-local Frame = Instance.new("Frame")
-Frame.Parent = ScreenGui
-Frame.Size = UDim2.new(0, 150, 0, 50)
-Frame.Position = UDim2.new(0.05, 0, 0.25, 0)
-Frame.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
-Frame.BackgroundTransparency = 0.2
-Frame.BorderSizePixel = 0
+local remoteBuy = RS:WaitForChild("BuyBrainrot") -- RemoteEvent
 
-local UICorner = Instance.new("UICorner")
-UICorner.CornerRadius = UDim.new(0, 10)
-UICorner.Parent = Frame
+-------------------------
+-- ESTADO
+-------------------------
+local AutoBuyEnabled = false
+local ButtonDrag = false
+local DragOffset = Vector2.new()
 
-local ToggleButton = Instance.new("TextButton")
-ToggleButton.Parent = Frame
-ToggleButton.Size = UDim2.new(1, 0, 1, 0)
-ToggleButton.Position = UDim2.new(0, 0, 0, 0)
-ToggleButton.Text = "AutoBuy: OFF"
-ToggleButton.TextColor3 = Color3.new(1,1,1)
-ToggleButton.Font = Enum.Font.GothamBold
-ToggleButton.TextSize = 18
-ToggleButton.BackgroundTransparency = 1
-ToggleButton.BorderSizePixel = 0
+-------------------------
+-- CREAR BOTÓN
+-------------------------
+local gui = Instance.new("ScreenGui")
+gui.Parent = game.Players.LocalPlayer:WaitForChild("PlayerGui")
 
--- ====== Hacer draggable en PC y móvil ======
-local dragging = false
-local dragInput, dragStart, startPos
+local button = Instance.new("TextButton")
+button.Size = UDim2.new(0, 160, 0, 60)
+button.Position = UDim2.new(0.05, 0, 0.25, 0)
+button.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+button.TextColor3 = Color3.fromRGB(255, 255, 255)
+button.TextSize = 22
+button.Text = "AutoBuy: OFF"
+button.Font = Enum.Font.GothamBold
+button.AutoButtonColor = true
+button.BackgroundTransparency = 0.1
+button.Parent = gui
+button.Active = true
+button.Draggable = false -- usaremos drag manual
 
-local function updateInput(input)
-    local delta = input.Position - dragStart
-    Frame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X,
-                               startPos.Y.Scale, startPos.Y.Offset + delta.Y)
-end
+local corner = Instance.new("UICorner")
+corner.CornerRadius = UDim.new(0, 14)
+corner.Parent = button
 
-Frame.InputBegan:Connect(function(input)
+-------------------------
+-- ACTIVAR / DESACTIVAR
+-------------------------
+button.MouseButton1Click:Connect(function()
+    AutoBuyEnabled = not AutoBuyEnabled
+
+    if AutoBuyEnabled then
+        button.Text = "AutoBuy: ON"
+        button.BackgroundColor3 = Color3.fromRGB(60, 170, 80)
+    else
+        button.Text = "AutoBuy: OFF"
+        button.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+    end
+end)
+
+-------------------------
+-- DRAG (PC + MÓVIL)
+-------------------------
+button.InputBegan:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.MouseButton1 or
        input.UserInputType == Enum.UserInputType.Touch then
-        dragging = true
-        dragStart = input.Position
-        startPos = Frame.Position
 
-        input.Changed:Connect(function()
-            if input.UserInputState == Enum.UserInputState.End then
-                dragging = false
-            end
-        end)
+        ButtonDrag = true
+        DragOffset = input.Position - button.AbsolutePosition
     end
 end)
 
-Frame.InputChanged:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseMovement or
+button.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or
        input.UserInputType == Enum.UserInputType.Touch then
-        dragInput = input
+
+        ButtonDrag = false
     end
 end)
 
-UserInputService.InputChanged:Connect(function(input)
-    if dragging and input == dragInput then
-        updateInput(input)
+UIS.InputChanged:Connect(function(input)
+    if ButtonDrag and (input.UserInputType == Enum.UserInputType.MouseMovement or
+                       input.UserInputType == Enum.UserInputType.Touch) then
+
+        button.Position = UDim2.fromOffset(
+            input.Position.X - DragOffset.X,
+            input.Position.Y - DragOffset.Y
+        )
     end
 end)
 
--- ====== AutoBuy ======
-local autoBuy = false
-
-ToggleButton.MouseButton1Click:Connect(function()
-    autoBuy = not autoBuy
-    if autoBuy then
-        ToggleButton.Text = "AutoBuy: ON"
-        Frame.BackgroundColor3 = Color3.fromRGB(30, 120, 30)
-    else
-        ToggleButton.Text = "AutoBuy: OFF"
-        Frame.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+-------------------------
+-- AUTO BUY LOOP
+-------------------------
+RUN.Heartbeat:Connect(function()
+    if AutoBuyEnabled then
+        remoteBuy:FireServer("BUY_ALL") 
+        task.wait(AUTO_SPEED)
     end
 end)
 
--- ====== Función para activar los ProximityPrompts “buy” ======
-local function tryActivateBuyPrompts()
-    for _, obj in pairs(workspace:GetDescendants()) do
-        if obj:IsA("ProximityPrompt") then
-            -- Verificá el texto del prompt para que sea el de “comprar” en tu juego
-            local txt = obj.ActionText
-            if txt and string.lower(txt):find("buy") or string.lower(txt):find("comprar") then
-                if obj.Enabled then
-                    -- Intentar activación
-                    obj:InputHoldBegin()
-                    obj:InputHoldEnd()
-                end
-            end
+-------------------------
+-- DETECTAR TECLA "E"
+-------------------------
+UIS.InputBegan:Connect(function(input, gpe)
+    if gpe then return end
+
+    if input.KeyCode == INTERACT_KEY then
+        if AutoBuyEnabled then
+            remoteBuy:FireServer("BUY_ALL")
         end
-    end
-end
-
--- ====== Loop ======
-RunService.Heartbeat:Connect(function()
-    if autoBuy then
-        tryActivateBuyPrompts()
     end
 end)
