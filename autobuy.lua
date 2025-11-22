@@ -1,9 +1,8 @@
 -- Auto Buy para "Steal a Brainrot" - Creado por un scripter de élite
--- Características: Botón On/Off profesional, verificación de compra, detección automática de tienda.
+-- Características: Botón On/Off profesional, verificación de compra, detección automática de Brainrot.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local HttpService = game:GetService("HttpService")
 local UserInputService = game:GetService("UserInputService")
 local TweenService = game:GetService("TweenService")
 
@@ -11,52 +10,51 @@ local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
 
 -- Variables de configuración
-local remoteEvent = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("BuyItem")
 local buyDelay = 0.1 -- Retraso en segundos entre cada intento de compra. Ajústalo si es demasiado rápido.
 
 -- Estado del Auto Buy
 local isAutoBuyEnabled = false
 local currentTargetItem = nil
 
--- Función para encontrar el objeto de la tienda y el item
-local function getShopItem()
+-- Función para encontrar los Brainrots en la pasarela
+local function getBrainrots()
+    local brainrots = {}
     for _, obj in ipairs(workspace:GetDescendants()) do
-        if obj.Name:lower() == "shop" and obj:IsA("Model") then
-            local item = obj:FindFirstChild("Item")
-            local clickDetector = item:FindFirstChildOfClass("ClickDetector")
-            if item and clickDetector then
-                return item, clickDetector
-            end
+        if obj.Name:lower() == "brainrot" and obj:FindFirstChildOfClass("ClickDetector") then
+            table.insert(brainrots, obj)
         end
     end
-    return nil, nil
+    return brainrots
 end
 
 -- Función principal del Auto Buy
 local function autoBuy()
     if not isAutoBuyEnabled then return end
 
-    local item, clickDetector = getShopItem()
-    if not item or not clickDetector then
-        -- La tienda no se encontró, esperar y reintentar
+    local brainrots = getBrainrots()
+    if #brainrots == 0 then
+        -- No se encontraron Brainrots, esperar y reintentar
         task.wait(1)
         autoBuy() -- Llamada recursiva para seguir intentando
         return
     end
 
-    -- Guardar el item actual para verificar si cambia
-    currentTargetItem = item
+    -- Seleccionar un Brainrot aleatorio
+    local targetBrainrot = brainrots[math.random(1, #brainrots)]
+
+    -- Guardar el Brainrot actual para verificar si cambia
+    currentTargetItem = targetBrainrot
 
     -- Simular el clic en el detector
-    fireclickdetector(clickDetector)
+    fireclickdetector(targetBrainrot:FindFirstChildOfClass("ClickDetector"))
 
     -- Esperar un momento a que el servidor procese la compra
     task.wait(buyDelay)
 
     -- Bucle de compra continua
-    while isAutoBuyEnabled and currentTargetItem == item do
+    while isAutoBuyEnabled and currentTargetItem == targetBrainrot do
         local success, result = pcall(function()
-            return remoteEvent:InvokeServer()
+            return ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("BuyItem"):InvokeServer()
         end)
 
         if success then
@@ -64,15 +62,15 @@ local function autoBuy()
             -- print("Respuesta del servidor:", result)
             task.wait(buyDelay)
         else
-            -- Hubo un error (probablemente porque el item ya no existe o se compró)
-            -- print("Error al comprar, deteniendo el bucle para este item.")
-            break -- Salir del bucle para que se detecte el nuevo item
+            -- Hubo un error (probablemente porque el Brainrot ya no existe o se compró)
+            -- print("Error al comprar, deteniendo el bucle para este Brainrot.")
+            break -- Salir del bucle para que se detecte el nuevo Brainrot
         end
     end
 
-    -- Si sigue activado, reiniciar el proceso para comprar el siguiente item
+    -- Si sigue activado, reiniciar el proceso para comprar el siguiente Brainrot
     if isAutoBuyEnabled then
-        task.wait(0.2) -- Pequeña pausa antes de buscar el nuevo item
+        task.wait(0.2) -- Pequeña pausa antes de buscar el nuevo Brainrot
         autoBuy()
     end
 end
