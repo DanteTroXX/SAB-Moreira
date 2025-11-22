@@ -1,17 +1,9 @@
---[[ 
-===========================================
-    AUTO BUY – TOGGLE BUTTON (NO REMOTES)
-===========================================
-]]
-
-local UserInputService = game:GetService("UserInputService")
+-- Servicios
 local Players = game:GetService("Players")
-local LocalPlayer = Players.LocalPlayer
 local RunService = game:GetService("RunService")
+local LocalPlayer = Players.LocalPlayer
 
--- =======================
--- CREAR UI DEL BOTÓN
--- =======================
+-- UI
 local ScreenGui = Instance.new("ScreenGui")
 ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
 ScreenGui.ResetOnSpawn = false
@@ -25,49 +17,41 @@ ToggleButton.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
 ToggleButton.TextColor3 = Color3.fromRGB(255,255,255)
 ToggleButton.Font = Enum.Font.GothamBold
 ToggleButton.TextSize = 18
-ToggleButton.AutoButtonColor = true
 ToggleButton.BorderSizePixel = 0
-ToggleButton.BackgroundTransparency = 0.1
-ToggleButton.ZIndex = 999999
 
--- Bordes redondos
 local UICorner = Instance.new("UICorner")
 UICorner.CornerRadius = UDim.new(0, 12)
 UICorner.Parent = ToggleButton
 
--- =======================
--- SISTEMA AUTO BUY
--- =======================
+-- Estado del auto-buy
 local autoBuy = false
+ToggleButton.MouseButton1Click:Connect(function()
+	autoBuy = not autoBuy
+	if autoBuy then
+		ToggleButton.Text = "AutoBuy: ON"
+		ToggleButton.BackgroundColor3 = Color3.fromRGB(50, 200, 50)
+	else
+		ToggleButton.Text = "AutoBuy: OFF"
+		ToggleButton.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
+	end
+end)
 
-local function toggleAutoBuy()
-    autoBuy = not autoBuy
-
-    if autoBuy then
-        ToggleButton.Text = "AutoBuy: ON"
-        ToggleButton.BackgroundColor3 = Color3.fromRGB(50, 200, 50)
-    else
-        ToggleButton.Text = "AutoBuy: OFF"
-        ToggleButton.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
-    end
+-- Función para activar ProximityPrompts
+local function activatePrompts()
+	for _, obj in pairs(workspace:GetDescendants()) do
+		if obj:IsA("ProximityPrompt") and obj.ActionText:lower():find("buy") then
+			-- Solo activa si el prompt está habilitado
+			if obj.Enabled then
+				obj:InputHoldBegin()
+				obj:InputHoldEnd()
+			end
+		end
+	end
 end
 
-ToggleButton.MouseButton1Click:Connect(toggleAutoBuy)
-
--- =======================
--- LOOP DE AUTOBUY RÁPIDO
--- =======================
-RunService.RenderStepped:Connect(function()
-    if autoBuy then
-        -- Simula presionar la tecla E rápido
-        UserInputService.InputBegan:Fire({
-            KeyCode = Enum.KeyCode.E,
-            UserInputType = Enum.UserInputType.Keyboard
-        })
-
-        UserInputService.InputEnded:Fire({
-            KeyCode = Enum.KeyCode.E,
-            UserInputType = Enum.UserInputType.Keyboard
-        })
-    end
+-- Loop de auto-buy
+RunService.Heartbeat:Connect(function()
+	if autoBuy then
+		activatePrompts()
+	end
 end)
